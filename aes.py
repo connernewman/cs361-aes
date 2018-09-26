@@ -29,18 +29,21 @@ def ff_deg(gf):
 
 def ff_mod(p, m):
 	if ff_deg(p) < 8:
-		print('Finished w/', print_GF(p))
 		return p
 	degree_difference = ff_deg(p) - ff_deg(mx)
-	print('ff_deg(mx) =', ff_deg(mx), ', ff_deg(p) =', ff_deg(p))
 	mult_by = 0x1 << degree_difference
 	mult_by = mult_by.to_bytes((mult_by.bit_length() + 7) // 8, 'big')
 	part = ff_mult(m, mult_by)
-	print('Got part:', print_GF(part))
 	q = ff_add(part, p)
 	return ff_mod(q, m)
 
-def print_GF(gf):
+def ff_dot(x, y):
+	return ff_mod(ff_mult(x, y), mx)
+
+def xtime(x):
+	return ff_dot(x, b'\x02')
+
+def gf_repr(gf):
 	gf = int.from_bytes(gf, 'big')
 	res = []
 	for i in range(gf.bit_length(), -1, -1):
