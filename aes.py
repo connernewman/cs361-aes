@@ -14,16 +14,31 @@ def ff_add(x, y):
 	return res.to_bytes((res.bit_length() + 7) // 8, 'big')
 
 def ff_mult(x, y):
-	print('Multiplying', hex(x[0])[2:], 'and', hex(y[0])[2:])
-	res = bytearray(2)
+	xi = int.from_bytes(x, 'big')
+	yi = int.from_bytes(y, 'big')
 	bits = 0
-	for bit_x in range(0, 8):
-		if x[0] & (0x1 << bit_x):
-			for bit_y in range(0, 8):
-				if y[0] & (0x1 << bit_y):
+	for bit_x in range(0, xi.bit_length()):
+		if xi & (0x1 << bit_x):
+			for bit_y in range(0, yi.bit_length()):
+				if yi & (0x1 << bit_y):
 					bits ^= (0x1 << (bit_x + bit_y))
-	print('Got bits:', bits)
-	return bits
+	return bits.to_bytes((bits.bit_length() + 7) // 8, 'big')
+
+def ff_deg(gf):
+	return int.from_bytes(gf, 'big').bit_length() - 1
+
+def ff_mod(p, m):
+	if ff_deg(p) < 8:
+		print('Finished w/', print_GF(p))
+		return p
+	degree_difference = ff_deg(p) - ff_deg(mx)
+	print('ff_deg(mx) =', ff_deg(mx), ', ff_deg(p) =', ff_deg(p))
+	mult_by = 0x1 << degree_difference
+	mult_by = mult_by.to_bytes((mult_by.bit_length() + 7) // 8, 'big')
+	part = ff_mult(m, mult_by)
+	print('Got part:', print_GF(part))
+	q = ff_add(part, p)
+	return ff_mod(q, m)
 
 def print_GF(gf):
 	gf = int.from_bytes(gf, 'big')
@@ -31,7 +46,7 @@ def print_GF(gf):
 	for i in range(gf.bit_length(), -1, -1):
 		if gf & (0x1 << i):
 			res.append('x^' + str(i))
-	return ' + '.join(res)
+	return ' + '.join(res)#.replace('x^1', 'x').replace('x^0', '1')
 
 def aes_128_encrypt(input_bytes, key_bytes):
 	assert len(input_bytes) == 16
