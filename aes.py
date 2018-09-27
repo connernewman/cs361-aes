@@ -76,13 +76,16 @@ def aes_128_encrypt(input_bytes, key_bytes):
 
 	add_round_key(state, w[0, Nb - 1])
 
-	for round in range(Nr - 1):
+	for rnd in range(Nr - 1):
 		# SubBytes step
 		for row in state:
-			for i in range(len(row)):
-				ff = row[i]
+			for i, ff in enumerate(row):
 				row[i] = sbox[ff]
-				
+
+		# ShiftRows step
+		for j, row in enumerate(state):
+			for i, ff in enumerate(row):
+				row[i] = row[(i + j) % Nb]
 
 	out = bytearray(16)
 	for i in range(16):
