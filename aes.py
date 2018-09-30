@@ -4,13 +4,14 @@ sbox = {b'\x98': b'F', b'\xbc': b'e', b'&': b'\xf7', b'\xed': b'U', b'\xca': b't
 Nb = 4
 
 def rot_word(word):
-	x = word[-1]
-	word.insert(0, x)
-	word.pop()
-	return word
+	res = word.copy()
+	x = res[0]
+	res.append(x)
+	res.remove(x)
+	return res
 
 def ff_add(x, y):
-	print('got x as:', x, 'and y as:', y)
+	#print('got x as:', x, 'and y as:', y)
 	xi = int.from_bytes(x, 'big')
 	yi = int.from_bytes(y, 'big')
 	res = xi ^ yi
@@ -54,6 +55,13 @@ def gf_repr(gf):
 			res.append('x^' + str(i))
 	return ' + '.join(res)#.replace('x^1', 'x').replace('x^0', '1')
 
+def state_repr(state):
+	res = [''.join([('00' + hex(b[0])[2:])[-2:] for b in r]) for r in state]
+	return '\n'.join(res)
+
+def word_repr(word):
+	return ''.join(('00' + hex(b[0])[2:])[-2:] for b in word)
+
 def m_inv(x):
 	if x == b'\x00':
 		return x
@@ -63,9 +71,10 @@ def m_inv(x):
 			return b
 
 def sub_word(word):
+	res = word.copy()
 	for i, ff in enumerate(word):
-		word[i] = sbox[ff]
-	return word
+		res[i] = sbox[ff]
+	return res
 
 # XOR two 4-byte words
 def word_xor(w1, w2):
@@ -80,28 +89,41 @@ def rcon(i):
 	return [xi, b'\x00', b'\x00', b'\x00']
 
 def key_expand(key, Nk, Nr):
-	w = [[] for _ in range(Nb * (Nr + 1))]
+	w = [[b'\x00', b'\x00', b'\x00', b'\x00'] for _ in range(Nb * (Nr + 1))]
 	temp = [b'\x00', b'\x00', b'\x00', b'\x00']
 	
 	for i in range(Nk):
 		w[i] = key[i].copy()
 	
 	for i in range(Nk, Nb * (Nr + 1)):
+		print('when i =', i)
 		temp = w[i - 1]
+		print('temp =', word_repr(temp))
 		if i % Nk == 0:
-			temp = word_xor(sub_word(rot_word(temp)), rcon(i // Nk))
+			#temp = word_xor(sub_word(rot_word(temp)), rcon(i // Nk))
+			temp = rot_word(temp)
+			print('after rot_word:', word_repr(temp))
+			temp = sub_word(temp)
+			print('after sub_word:', word_repr(temp))
+			print('rcon[i/Nk]:', rcon(i // Nk))
+			temp = word_xor(temp, rcon(i // Nk))
+			print('after XOR with Rcon:', word_repr(temp))
 		elif Nk > 6 and i % Nk == 4:
 			temp = sub_word(temp)
+		print('w[i-Nk]', word_repr(w[i - Nk]))
 		w[i] = word_xor(w[i - Nk], temp)
+		print('w[i]=temp XOR w[i-Nk]', word_repr(w[i]))
 	
 	return w
 
-def add_round_key(state, words):
+def add_round_key(state, words, rnd):
+	#print('words is:', words)
 	state_copy = state.copy()
-	for r, row in enumerate(state):
-		for c, ff in enumerate(row):
-			print('state[r][c] is:', state[r][c])
-			state_copy[r][c] = ff_add(state[r][c], words[c][r])
+	iwords = words[4 * rnd : 4 * rnd + 4]
+	#print('round key val is:\n' + state_repr(iwords))
+	for r in range(4):
+		for c in range(4):
+			state_copy[r][c] = ff_add(iwords[c][r], state[r][c])
 	return state_copy
 
 def aes_128_encrypt(input_bytes, key_bytes):
@@ -113,24 +135,36 @@ def aes_128_encrypt(input_bytes, key_bytes):
 	key = [[word[0].to_bytes(1, 'big'), word[1].to_bytes(1, 'big'), word[2].to_bytes(1, 'big'), word[3].to_bytes(1, 'big')] for word in key_words]
 	print('got key:', key)
 	ks = key_expand(key, Nk, Nr)
+	print('key schedule is:', ks)
 
 	# Load input bytes into 4 X 4 state array
 	state = []
 	for row in range(4):
 		state.append([input_bytes[row].to_bytes(1, 'big'), input_bytes[row + 4].to_bytes(1, 'big'), input_bytes[row + 8].to_bytes(1, 'big'), input_bytes[row + 12].to_bytes(1, 'big')])
-	print('got start state', state)
+	print('got start state:\n' + state_repr(state))
 
-	state = add_round_key(state, ks[0:Nb])
+	state = add_round_key(state, ks, 0)
+	print('after first add_round_key, state is:\n' + state_repr(state))
 
-	for rnd in range(Nr - 1):
+	for rnd in range(1, Nr):
+		print('~~~~~~~~~~~~~\nRound:', rnd)
+		print('start of round:\n' + state_repr(state))
 		# SubBytes step
-		for row in state:
-			sub_word(row)
+		for r, row in enumerate(state):
+			state[r] = sub_word(row)
+			
+		print('after SubBytes:\n' + state_repr(state))
 
 		# ShiftRows step
-		for j, row in enumerate(state):
-			for i, ff in enumerate(row):
-				row[i] = row[(i + j) % Nb]
+		state_copy = state.copy()
+		for r in range(4):
+			row = state[r]
+			for _ in range(r):
+				row = rot_word(row)
+			state_copy[r] = row
+		state = state_copy
+		
+		print('after ShiftRows:\n' + state_repr(state))
 
 		# MixColumns step
 		state_copy = state.copy()
@@ -144,9 +178,11 @@ def aes_128_encrypt(input_bytes, key_bytes):
 			state_copy[3][c] = ff_add(ff_add(ff_add(ff_dot(b'\x03', state[0][c]), state[1][c]), state[2][c]), ff_dot(b'\x02', state[3][c]))
 
 		state = state_copy
+		print('after MixColumns:\n' + state_repr(state))
 
 		# AddRoundKey step
-		state = add_round_key(state, ks[rnd * Nb:(rnd + 1) * Nb])
+		state = add_round_key(state, ks, rnd)
+		print('state after add_round_key is:\n' + state_repr(state))
 
 	# SubBytes one more time...
 	for row in state:
@@ -158,11 +194,13 @@ def aes_128_encrypt(input_bytes, key_bytes):
 			row[i] = row[(i + j) % Nb]
 
 	# AddRoundKey one more time...
-	state = add_round_key(state, ks[Nr * Nb:])
+	state = add_round_key(state, ks, Nr)
+	
+	print('final state is:\n' + state_repr(state))
 
 	out = bytearray(16)
 	for i in range(16):
-		out[i] = state[i // 4][i % 4]
+		out[i] = state[i // 4][i % 4][0]
 	return bytes(out)
 
 def main():
