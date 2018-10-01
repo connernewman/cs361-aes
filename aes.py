@@ -148,8 +148,11 @@ def aes_128_encrypt(input_bytes, key_bytes, Nk, Nr):
 	assert Nr in {10, 14}
 	
 	#print('enciphering:', bytes_to_hex(input_bytes))
-
-	key_words = [key_bytes[0:4], key_bytes[4:8], key_bytes[8:12], key_bytes[12:16]]
+	if Nk == 4:
+		key_words = [key_bytes[0:4], key_bytes[4:8], key_bytes[8:12], key_bytes[12:16]]
+	else:
+		key_words = [key_bytes[0:4], key_bytes[4:8], key_bytes[8:12], key_bytes[12:16], key_bytes[16:20], key_bytes[20:24], key_bytes[24:28], key_bytes[28:32]]
+	
 	key = [[word[0].to_bytes(1, 'big'), word[1].to_bytes(1, 'big'), word[2].to_bytes(1, 'big'), word[3].to_bytes(1, 'big')] for word in key_words]
 	#print('got key:', key)
 	ks = key_expand(key, Nk, Nr)
@@ -229,7 +232,7 @@ def aes_128_encrypt(input_bytes, key_bytes, Nk, Nr):
 	for r in range(4):
 		for c in range(4):
 			out[4 * c + r] = state[r][c][0]
-	print('enciphered:', bytes_to_hex(out))
+	#print('enciphered:', bytes_to_hex(out))
 	return bytes(out)
 
 def inv_cipher(input_bytes, key_bytes, Nk, Nr):
@@ -238,7 +241,11 @@ def inv_cipher(input_bytes, key_bytes, Nk, Nr):
 	for row in range(4):
 		state.append([input_bytes[row].to_bytes(1, 'big'), input_bytes[row + 4].to_bytes(1, 'big'), input_bytes[row + 8].to_bytes(1, 'big'), input_bytes[row + 12].to_bytes(1, 'big')])
 	
-	key_words = [key_bytes[0:4], key_bytes[4:8], key_bytes[8:12], key_bytes[12:16]]
+	if Nk == 4:
+		key_words = [key_bytes[0:4], key_bytes[4:8], key_bytes[8:12], key_bytes[12:16]]
+	else:
+		key_words = [key_bytes[0:4], key_bytes[4:8], key_bytes[8:12], key_bytes[12:16], key_bytes[16:20], key_bytes[20:24], key_bytes[24:28], key_bytes[28:32]]
+	
 	key = [[word[0].to_bytes(1, 'big'), word[1].to_bytes(1, 'big'), word[2].to_bytes(1, 'big'), word[3].to_bytes(1, 'big')] for word in key_words]
 	#print('got key:', key)
 	ks = key_expand(key, Nk, Nr)
@@ -297,7 +304,7 @@ def inv_cipher(input_bytes, key_bytes, Nk, Nr):
 	for r in range(4):
 		for c in range(4):
 			out[4 * c + r] = state[r][c][0]
-	print('deciphered:', bytes_to_hex(out))
+	#print('deciphered:', bytes_to_hex(out))
 	return bytes(out)
 
 def main():
@@ -319,10 +326,41 @@ def main():
 	Nk = args.keysize
 	Nr = {4: 10, 8: 14}[Nk]
 	
+	#print('input bytes:', input_bytes)
+	#print('len(input_bytes) is:', len(input_bytes), ', len // 16:', len(input_bytes) // 16)
+	input_chunks = [input_bytes[16 * x:16 * x + 16] for x in range(len(input_bytes) // 16 + 1)]
+	#print('input_chunks:', input_chunks)
 	if mode:
-		res = aes_128_encrypt(input_bytes, key, Nk, Nr)
+		last_chunk = input_chunks[-1]
+		l = len(last_chunk)
+		#print('lenght of last chunk is:', l)
+		if l == 16:
+			input_chunks.append(b'\x10' * 16)
+		else:
+			num_pad_bytes = 16 - l
+			input_chunks[-1] = last_chunk + num_pad_bytes.to_bytes(1, 'big') * num_pad_bytes
+			#print('padded w/', num_pad_bytes.to_bytes(1, 'big') * num_pad_bytes)
 	else:
-		res = inv_cipher(input_bytes, key, Nk, Nr)
+		input_chunks = input_chunks[:-1]
+	res = bytearray()
+	if mode:
+		pct = 0
+		for i, chunk in enumerate(input_chunks):
+			print('\r' + str(pct) + '%', end='')
+			res += aes_128_encrypt(chunk, key, Nk, Nr)
+			pct = 100 * i // len(input_chunks)
+	else:
+		pct = 0
+		for i, chunk in enumerate(input_chunks):
+			print('\r' + str(pct) + '%', end='')
+			res += inv_cipher(chunk, key, Nk, Nr)
+			pct = 100 * i // len(input_chunks)
+	
+	print()
+	
+	if not mode:
+		pad_bytes = res[-1]
+		res = res[:-pad_bytes]
 	
 	with open(args.outputfile, 'wb') as f:
 		f.write(res)
