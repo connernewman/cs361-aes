@@ -309,7 +309,7 @@ def inv_cipher(input_bytes, key_bytes, Nk, Nr):
 
 def main():
 	parser = argparse.ArgumentParser(description='AES')
-	parser.add_argument('keysize', type=int, help='128 or 256-bit')
+	parser.add_argument('keysize', type=int, help='4 or 8 words')
 	parser.add_argument('keyfile', type=str)
 	parser.add_argument('inputfile', type=str)
 	parser.add_argument('outputfile', type=str)
